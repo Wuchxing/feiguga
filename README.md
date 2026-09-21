@@ -1,1 +1,32 @@
-# feiguga
+# 肥咕嘎桌面宠物
+
+一个基于 Python + PyQt5 的 Windows 桌面宠物。支持透明置顶窗口、角色区域点击、拖拽弹性跟随、呼吸动画、淡入淡出、托盘、表情菜单、闲置状态及开机自启。
+
+## 运行
+
+需要 Windows 10/11 和 Python 3.9+（安装 Python 时勾选 `py launcher`）。双击 `run.bat`，首次运行会自动创建虚拟环境、安装依赖并处理素材。也可以手动执行：
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe process_assets.py
+.\.venv\Scripts\python.exe main.py
+```
+
+操作：左键单击随机互动，双击打滚，按住拖动，悬停 2 秒招手，右键打开表情与设置菜单。关闭/隐藏后可从系统托盘恢复。
+
+## 替换素材
+
+将新 PNG 放进 `assets/` 并保持原文件名，然后删除 `assets_processed/`，重新运行 `process_assets.py`。处理器适用于边缘连通的浅灰/白色背景；若素材已带透明通道，可直接按同名复制到 `assets_processed/`。建议原图为正方形且角色居中。
+
+## 打包 EXE
+
+双击 `build.bat`。完成后程序位于 `dist/FeigugaPet/FeigugaPet.exe`。目录模式可避免单文件包每次启动解压素材，启动更快、内存占用也更稳定。
+
+## 项目结构
+
+- `main.py`：窗口、鼠标交互、动画、托盘及系统集成
+- `state_machine.py`：状态定义与闲置状态机
+- `asset_manager.py`：按需加载和缩放素材
+- `settings_dialog.py`：大小、透明度和开机自启设置
+- `process_assets.py`：素材透明化预处理
