@@ -1,3 +1,4 @@
+import math
 import random
 import sys
 import time
@@ -29,11 +30,12 @@ class PetWindow(QWidget):
         self.drag_offset = QPoint()
         self.drag_target = QPoint()
         self.press_pos = QPoint()
+        self.press_local = QPoint()
+        self.last_drag_pos = QPoint()
+        self.last_drag_time = 0.0
         self.last_activity = time.monotonic()
         self.hover_started = None
         self.temporary_until = 0.0
-        self.breathe_phase = 0
-        self.render_offset = 0
         self.walk_direction = -1
 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
@@ -118,22 +120,37 @@ class PetWindow(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.SmoothPixmapTransform)
         x = (self.width() - self.pixmap.width()) // 2
-        painter.drawPixmap(x, 3 + self.render_offset, self.pixmap)
+        painter.drawPixmap(x, 3, self.pixmap)
 
     def mousePressEvent(self, event):
         self._touch()
         if event.button() == Qt.LeftButton:
             self.dragging = True
             self.press_pos = event.globalPos()
+            self.press_local = event.pos()
+            self.last_drag_pos = event.globalPos()
+            self.last_drag_time = time.monotonic()
             self.drag_offset = event.globalPos() - self.frameGeometry().topLeft()
             self.drag_target = self.pos()
             self.machine.locked = True
-            self._show_state(PetState.ANGRY, force=True)
             event.accept()
 
     def mouseMoveEvent(self, event):
         if self.dragging:
             self.drag_target = event.globalPos() - self.drag_offset
+            total = event.globalPos() - self.press_pos
+            if total.manhattanLength() > 6:
+                now = time.monotonic()
+                elapsed = max(now - self.last_drag_time, 0.01)
+                step = event.globalPos() - self.last_drag_pos
+                speed = math.hypot(step.x(), step.y()) / elapsed
+                if abs(total.y()) > abs(total.x()) * 0.75:
+                    state = PetState.JUMP if total.y() < 0 else PetState.CLIMB_DOWN
+                else:
+                    state = PetState.RUN if speed >= 700 else PetState.JOG
+                self._show_state(state, animate=False, force=True)
+                self.last_drag_pos = event.globalPos()
+                self.last_drag_time = now
             event.accept()
 
     def mouseReleaseEvent(self, event):
@@ -144,9 +161,22 @@ class PetWindow(QWidget):
             if moved:
                 self._show_state(PetState.STANDARD, force=True)
             else:
-                self._show_state(random.choice([PetState.EAT, PetState.WAVE, PetState.ROLL]),
-                                 temporary=2.5, force=True)
+                self._trigger_body_interaction(self.press_local)
             event.accept()
+
+    def _trigger_body_interaction(self, point):
+        """按角色身体比例识别额头、嘴部和腹部热点。"""
+        nx = point.x() / max(self.width(), 1)
+        ny = point.y() / max(self.height(), 1)
+        if 0.25 <= nx <= 0.75 and 0.08 <= ny <= 0.29:
+            self._show_state(PetState.ANGRY, temporary=3.0, force=True)
+        elif 0.30 <= nx <= 0.72 and 0.29 < ny <= 0.50:
+            self._show_state(PetState.COVER_MOUTH, temporary=3.0, force=True)
+        elif 0.24 <= nx <= 0.78 and 0.50 < ny <= 0.84:
+            self._show_state(PetState.EAT, temporary=4.0, force=True)
+        else:
+            self._show_state(random.choice([PetState.WAVE, PetState.ROLL]),
+                             temporary=2.5, force=True)
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -204,10 +234,6 @@ class PetWindow(QWidget):
             current = self.pos()
             delta = self.drag_target - current
             self.move(current + QPoint(round(delta.x() * 0.38), round(delta.y() * 0.38)))
-        self.breathe_phase = (self.breathe_phase + 1) % 60
-        # 三角波比正弦更轻量，周期约 2 秒，幅度 ±2 px。
-        self.render_offset = round(abs(self.breathe_phase - 30) / 15 - 1)
-        self.update()
 
     def open_settings(self):
         dialog = SettingsDialog(self, self.pet_size, self.base_opacity, self._autostart_enabled())

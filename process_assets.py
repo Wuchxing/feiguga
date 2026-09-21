@@ -9,12 +9,21 @@ FILES = [
     "01-core-standard.png", "02-pose-sit.png", "03-pose-wave.png",
     "04-pose-eat.png", "05-pose-roll.png", "06-exp-sleepy.png",
     "07-exp-cry.png", "08-exp-angry.png", "09-exp-happy.png",
+    "14-move-jog.png", "15-move-run.png", "16-move-jump.png",
+    "17-move-climb-down.png", "18-interact-cover-mouth.png",
+    "19-exp-cry-action-v2.png", "20-move-climb-back-v2.png",
 ]
 
 
 def remove_background(source: Path, destination: Path) -> None:
     # 先缩小再抠图，显著减少运行时内存，同时保留桌宠显示所需的细节。
-    image = Image.open(source).convert("RGB")
+    original = Image.open(source)
+    if original.mode == "RGBA" and original.getchannel("A").getextrema()[0] < 255:
+        original.thumbnail((512, 512), Image.Resampling.LANCZOS)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        original.save(destination, optimize=True)
+        return
+    image = original.convert("RGB")
     image.thumbnail((512, 512), Image.Resampling.LANCZOS)
 
     # 素材背景均为从画布边缘连通的浅灰色。Pillow 的洪水填充只移除
