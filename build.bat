@@ -15,7 +15,7 @@ if not exist "assets_processed\01-core-standard.png" (
   if errorlevel 1 goto :error
 )
 
-call .venv\Scripts\pyinstaller.exe --noconfirm --clean --windowed --name FeigugaPet --add-data "assets_processed;assets_processed" main.py
+call .venv\Scripts\pyinstaller.exe --noconfirm --clean --windowed --name FeigugaPet --add-data "assets_processed;assets_processed" --add-data "animations;animations" main.py
 if errorlevel 1 goto :error
 
 echo.

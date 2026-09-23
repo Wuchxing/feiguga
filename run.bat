@@ -15,6 +15,11 @@ if not exist "assets_processed\01-core-standard.png" (
   if errorlevel 1 goto :error
 )
 
+if not exist "animations\standard\frame_059.png" (
+  call .venv\Scripts\python.exe generate_animations.py
+  if errorlevel 1 goto :error
+)
+
 start "" ".venv\Scripts\pythonw.exe" "%~dp0main.py"
 exit /b 0
 

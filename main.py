@@ -15,6 +15,7 @@ from state_machine import PetState, PetStateMachine
 
 ROOT = Path(__file__).resolve().parent
 PROCESSED = ROOT / "assets_processed"
+ANIMATIONS = ROOT / "animations"
 
 
 class PetWindow(QWidget):
@@ -23,7 +24,7 @@ class PetWindow(QWidget):
         self.settings = QSettings("Feiguga", "DesktopPet")
         self.pet_size = self.settings.value("size", 200, int)
         self.base_opacity = self.settings.value("opacity", 0.95, float)
-        self.assets = AssetManager(PROCESSED)
+        self.assets = AssetManager(PROCESSED, ANIMATIONS)
         self.machine = PetStateMachine()
         self.pixmap = QPixmap()
         self.dragging = False
@@ -37,6 +38,9 @@ class PetWindow(QWidget):
         self.hover_started = None
         self.temporary_until = 0.0
         self.walk_direction = -1
+        self.auto_moving = False
+        self.animation_frames = []
+        self.animation_index = 0
 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -50,6 +54,9 @@ class PetWindow(QWidget):
         self.tick = QTimer(self)
         self.tick.timeout.connect(self._update_motion)
         self.tick.start(33)
+        self.animation_timer = QTimer(self)
+        self.animation_timer.timeout.connect(self._advance_animation)
+        self.animation_timer.start(33)
         self.idle_timer = QTimer(self)
         self.idle_timer.timeout.connect(self._update_idle)
         self.idle_timer.start(1000)
@@ -64,6 +71,8 @@ class PetWindow(QWidget):
         show_action = menu.addAction("显示肥咕嘎")
         show_action.triggered.connect(self.show)
         menu.addAction("设置…", self.open_settings)
+        menu.addAction("喂食", lambda: self._show_state(
+            PetState.EAT, temporary=4.0, force=True))
         menu.addSeparator()
         menu.addAction("退出", QApplication.instance().quit)
         self.tray.setContextMenu(menu)
@@ -81,7 +90,9 @@ class PetWindow(QWidget):
             return
         if temporary:
             self.temporary_until = time.monotonic() + temporary
-        new_pixmap = self.assets.scaled(state, self.pet_size)
+        self.animation_frames = self.assets.animation(state, self.pet_size)
+        self.animation_index = 0
+        new_pixmap = self.animation_frames[0]
         if animate and self.isVisible():
             fade_out = QPropertyAnimation(self, b"windowOpacity", self)
             fade_out.setDuration(150)
@@ -200,6 +211,8 @@ class PetWindow(QWidget):
             action = QAction(label, menu)
             action.triggered.connect(lambda _checked=False, s=state: self._show_state(s, temporary=8, force=True))
             expression.addAction(action)
+        menu.addAction("喂食", lambda: self._show_state(
+            PetState.EAT, temporary=4.0, force=True))
         menu.addAction("设置…", self.open_settings)
         menu.addAction("隐藏到托盘", self.hide)
         menu.addSeparator()
@@ -208,6 +221,14 @@ class PetWindow(QWidget):
 
     def _touch(self):
         self.last_activity = time.monotonic()
+        self.auto_moving = False
+
+    def _advance_animation(self):
+        if len(self.animation_frames) < 2:
+            return
+        self.animation_index = (self.animation_index + 1) % len(self.animation_frames)
+        self.pixmap = self.animation_frames[self.animation_index]
+        self.update()
 
     def _check_hover(self):
         if self.hover_started and time.monotonic() - self.hover_started >= 2:
@@ -220,20 +241,25 @@ class PetWindow(QWidget):
         if self.dragging or now < self.temporary_until:
             return
         idle = now - self.last_activity
-        self._show_state(self.machine.idle_state(idle))
-        if idle >= 600:
-            area = QApplication.screenAt(self.geometry().center()).availableGeometry()
-            next_x = self.x() + self.walk_direction * 4
-            if next_x < area.left() or next_x + self.width() > area.right():
-                self.walk_direction *= -1
-            self.move(self.x() + self.walk_direction * 4,
-                      area.bottom() - self.height())
+        if idle >= 300:
+            self.auto_moving = True
+            self._show_state(PetState.JOG)
+        else:
+            self._show_state(self.machine.idle_state(idle))
 
     def _update_motion(self):
         if self.dragging:
             current = self.pos()
             delta = self.drag_target - current
             self.move(current + QPoint(round(delta.x() * 0.38), round(delta.y() * 0.38)))
+        elif self.auto_moving:
+            screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
+            area = screen.availableGeometry()
+            next_x = self.x() + self.walk_direction * 2
+            if next_x < area.left() or next_x + self.width() > area.right():
+                self.walk_direction *= -1
+                next_x = self.x() + self.walk_direction * 2
+            self.move(next_x, area.bottom() - self.height())
 
     def open_settings(self):
         dialog = SettingsDialog(self, self.pet_size, self.base_opacity, self._autostart_enabled())
